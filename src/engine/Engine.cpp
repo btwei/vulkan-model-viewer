@@ -19,7 +19,7 @@ void Engine::handleEvent(SDL_Event e) {
 
 }
 
-void Engine::update() {
+void Engine::update(RenderableState& r) {
     
 }
 

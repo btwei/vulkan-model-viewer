@@ -8,6 +8,8 @@
 
 #include <SDL3/SDL_events.h>
 
+#include "vkmv/renderer/Renderer.hpp"
+
 namespace vkmv {
 
 class Engine {
@@ -16,7 +18,7 @@ public:
     ~Engine();
 
     void handleEvent(SDL_Event e);
-    void update();
+    void update(RenderableState& r);
 
 private:
 

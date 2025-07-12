@@ -6,24 +6,36 @@
 #ifndef VKMV_RENDERER_HPP
 #define VKMV_RENDERER_HPP
 
+#include <iostream>
 #include <vector>
 
 #include <vulkan/vulkan.h>
 
+#include <SDL3/SDL_events.h>
+#include <SDL3/SDL_vulkan.h>
+
 namespace vkmv {
+
+struct RenderableState {
+
+};
 
 class Renderer {
 public:
     Renderer();
     ~Renderer();
 
-    void drawFrame();
+    void drawFrame(RenderableState& r);
+    void handleEvent(const SDL_Event& e);
 
 private:
+    int frameNumber = 0;
+
     VkInstance instance;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
 
+    std::vector<char*> enabledInstanceLayers;
     std::vector<char*> enabledInstanceExtensions;
 
 

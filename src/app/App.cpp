@@ -19,6 +19,8 @@ App::~App() {
 }
 
 void App::run() {
+    RenderableState state;
+
     Window w;
     Renderer renderer;
     Engine engine;
@@ -28,10 +30,11 @@ void App::run() {
         while(SDL_PollEvent(&e) != false) {
             w.handleEvent(e);
             engine.handleEvent(e);
+            renderer.handleEvent(e);
         }
 
-        engine.update();
-        renderer.drawFrame();
+        engine.update(state);
+        renderer.drawFrame(state);
     }
 }
 
