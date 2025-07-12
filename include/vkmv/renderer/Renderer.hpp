@@ -6,6 +6,7 @@
 #ifndef VKMV_RENDERER_HPP
 #define VKMV_RENDERER_HPP
 
+#include <algorithm>
 #include <iostream>
 #include <vector>
 
@@ -32,6 +33,7 @@ private:
     int frameNumber = 0;
 
     VkInstance instance;
+    VkDebugUtilsMessengerEXT debugMessenger;
     VkPhysicalDevice physicalDevice;
     VkDevice device;
 
@@ -43,6 +45,9 @@ private:
     void cleanup();
 
     void createInstance();
+    void createDebugMessenger();
+    void destroyDebugMessenger();
+    
 };
 
 } // namespace vkmv
