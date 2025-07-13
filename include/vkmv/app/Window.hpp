@@ -28,6 +28,8 @@ public:
 
     void handleEvent(SDL_Event event);
 
+    SDL_Window* getWindow() const { return window; }
+
 private:
     SDL_Window* window;
     bool quit = false;

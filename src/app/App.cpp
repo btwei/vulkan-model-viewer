@@ -22,7 +22,7 @@ void App::run() {
     RenderableState state;
 
     Window w;
-    Renderer renderer;
+    Renderer renderer(w);
     Engine engine;
 
     while(!w.shouldClose()) {

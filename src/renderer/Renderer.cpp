@@ -10,7 +10,8 @@
 
 namespace vkmv {
 
-Renderer::Renderer() {
+Renderer::Renderer(const Window& window)
+: window(window) {
     initRenderer();
 }
 
@@ -28,9 +29,15 @@ void Renderer::handleEvent(const SDL_Event& e){
 
 void Renderer::initRenderer() {
     createInstance();
+    createDebugMessenger();
+    createSurface();
+    pickPhysicalDevice();
+    createDevice();
 }
 
 void Renderer::cleanup() {
+    vkDestroyDevice(device, nullptr);
+    SDL_Vulkan_DestroySurface(instance, surface, nullptr);
     destroyDebugMessenger();
     vkDestroyInstance(instance, nullptr);
 }
@@ -191,5 +198,170 @@ void Renderer::destroyDebugMessenger() {
     vkDestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 #endif
 }
+
+void Renderer::createSurface() {
+    SDL_Vulkan_CreateSurface(window.getWindow(), instance, nullptr, &surface);
+}
+
+void Renderer::pickPhysicalDevice() {
+    uint32_t deviceCount;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+    std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, physicalDevices.data());
+
+    if(deviceCount == 0) throw std::runtime_error("Failed to gind GPUs with Vulkan support!");
+
+    std::set<std::string> requiredDeviceExtensions;
+    std::set<std::string> optionalDeviceExtensions;
+
+    struct CandidateData {
+        VkPhysicalDevice physicalDevice;
+        bool qualified = true;
+        std::vector<char*> candidateEnabledExtensions;
+    };
+
+    std::multimap<int, CandidateData> candidates;
+
+    for(auto& device : physicalDevices) {
+        CandidateData deviceTraits;
+        int score;
+
+        deviceTraits.physicalDevice = device;
+
+        // GPU must support all required extensions
+        // Prefer selecting GPUs with more desired optional extensions
+        uint32_t extensionCount = 0;
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
+        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());\
+
+        std::set<std::string> candidateRequiredExtensions(requiredDeviceExtensions);
+        std::set<std::string> candidateOptionalExtensions(optionalDeviceExtensions);
+
+        for(auto& extension : availableExtensions) {
+            if(candidateRequiredExtensions.count(extension.extensionName) == 1) {
+                candidateRequiredExtensions.erase(extension.extensionName);
+                deviceTraits.candidateEnabledExtensions.push_back(extension.extensionName);
+
+                continue;
+            } else if(candidateOptionalExtensions.count(extension.extensionName) == 1) {
+                deviceTraits.candidateEnabledExtensions.push_back(extension.extensionName);
+
+                score += 500;
+            }
+        }
+
+        if(!candidateRequiredExtensions.empty()) {
+            deviceTraits.qualified = false;
+            continue;
+        }
+
+        // GPU must possess a queue family with graphics support and present support
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+        bool graphicsFamilyFound = false;
+        bool presentFamilyFound = false; 
+
+        uint32_t i = 0;
+        for(const auto& queueFamily : queueFamilies){
+            if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) graphicsFamilyFound = true;
+
+            VkBool32 presentSupport = false;
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+
+            if(presentSupport) presentFamilyFound = true;
+
+            i++;
+        }
+
+        if(!graphicsFamilyFound || !presentFamilyFound) {
+            deviceTraits.qualified = false;
+            continue;
+        }
+
+        // Prefer discrete GPUs (which tend to have better performance)
+        VkPhysicalDeviceProperties deviceProperties;
+        vkGetPhysicalDeviceProperties(device, &deviceProperties);
+
+        if(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+            score += 1000;
+        }
+
+        if(deviceTraits.qualified == true) candidates.insert(std::make_pair(score, deviceTraits));
+    }
+
+    if(candidates.rbegin()->first > 0){
+        physicalDevice = candidates.rbegin()->second.physicalDevice;
+        enabledDeviceExtensions = candidates.rbegin()->second.candidateEnabledExtensions;
+    } else {
+        throw std::runtime_error("Failed to find a suitable GPU!");
+    }
+}
+
+void Renderer::createDevice() {
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
+
+    bool graphicsFamilyFound = false;
+    bool presentFamilyFound = false;
+
+    // Find the queueFamilies for graphics and present support
+    // It's likely that queue 0 will have support for both
+    uint32_t i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+        if(!graphicsFamilyFound && queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+            graphicsFamilyIndex = i;
+            graphicsFamilyFound = true;
+        }
+
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
+
+        if(!presentFamilyFound && presentSupport) {
+            presentFamilyIndex = i;
+            presentFamilyFound = true;
+        }
+
+        i++;
+    }
+
+    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+    std::set<uint32_t> uniqueQueueFamilies = { graphicsFamilyIndex, presentFamilyIndex };
+
+    float queuePriority = 1.0f;
+    for(uint32_t queueFamily : uniqueQueueFamilies) {
+        VkDeviceQueueCreateInfo queueCreateInfo{};
+        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfo.queueCount = 1;
+        queueCreateInfo.pQueuePriorities = &queuePriority;
+
+        queueCreateInfos.push_back(queueCreateInfo);
+    }
+
+    VkPhysicalDeviceFeatures deviceFeatures{};
+
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+    createInfo.pQueueCreateInfos = queueCreateInfos.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(enabledDeviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = enabledDeviceExtensions.data();
+    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    if(vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create device!");
+    }
+
+    vkGetDeviceQueue(device, graphicsFamilyIndex, 0, &graphicsQueue);
+    vkGetDeviceQueue(device, presentFamilyIndex, 0, &presentQueue);
+}
+
+
 
 } // namespace vkmv
