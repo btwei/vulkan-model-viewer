@@ -8,7 +8,9 @@
 
 #include <algorithm>
 #include <iostream>
+#include <limits>
 #include <map>
+#include <queue>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -39,7 +41,9 @@ private:
 
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
+
     VkSurfaceKHR surface;
+
     VkPhysicalDevice physicalDevice;
     VkDevice device;
     uint32_t graphicsFamilyIndex;
@@ -47,9 +51,15 @@ private:
     VkQueue graphicsQueue;
     VkQueue presentQueue;
 
+    VkSwapchainKHR swapchain;
+    VkSurfaceFormatKHR swapchainImageFormat;
+    VkExtent2D swapchainExtent;
+    std::vector<VkImage> swapchainImages;
+    std::vector<VkImageView> swapchainImageViews;
+
     std::vector<char*> enabledInstanceLayers;
-    std::vector<char*> enabledInstanceExtensions;
-    std::vector<char*> enabledDeviceExtensions;
+    std::vector<std::string> enabledInstanceExtensions;
+    std::vector<std::string> enabledDeviceExtensions;
 
     void initRenderer();
     void cleanup();
@@ -60,6 +70,8 @@ private:
     void createSurface();
     void pickPhysicalDevice();
     void createDevice();
+    void createSwapchain();
+    void destroySwapchain();
 
 };
 
