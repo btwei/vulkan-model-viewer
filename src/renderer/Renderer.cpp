@@ -3,10 +3,16 @@
 // This file is part of the vulkan-model-viewer project.
 // This code is licensed under the MIT license (see http://opensource.org/licenses/MIT)
 
+#include "vkmv/renderer/Renderer.hpp"
+
+#include <algorithm>
+#include <iostream>
+#include <limits>
+#include <queue>
 #include <set>
 #include <stdexcept>
 
-#include "vkmv/renderer/Renderer.hpp"
+#include "vkmv/utils/VulkanHelpers.hpp"
 
 namespace vkmv {
 
@@ -20,7 +26,66 @@ Renderer::~Renderer() {
 }
 
 void Renderer::drawFrame(RenderableState& r) {
+    vkWaitForFences(device, 1, &getCurrentFrame().renderFence, VK_TRUE, 1'000'000'000);
+    vkResetFences(device, 1, &getCurrentFrame().renderFence);
 
+    uint32_t swapchainImageIndex;
+    vkAcquireNextImageKHR(device, swapchain, 1'000'000'000, getCurrentFrame().swapchainSemaphore, nullptr, &swapchainImageIndex);
+
+    VkCommandBuffer buf = getCurrentFrame().mainCommandBuffer;
+    vkResetCommandBuffer(buf, 0);
+
+    VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr};
+    vkBeginCommandBuffer(buf, &beginInfo);
+
+        recordMainCommands(r, buf);
+
+    vkEndCommandBuffer(buf);
+
+    VkSubmitInfo2 submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+
+    VkSemaphoreSubmitInfo waitSemaphoreInfo{};
+    waitSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    waitSemaphoreInfo.semaphore = getCurrentFrame().swapchainSemaphore;
+    waitSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+    submitInfo.waitSemaphoreInfoCount = 1;
+    submitInfo.pWaitSemaphoreInfos = &waitSemaphoreInfo;
+
+    VkSemaphoreSubmitInfo signalSemaphoreInfo{};
+    signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signalSemaphoreInfo.semaphore = getCurrentFrame().renderSemaphore;
+    signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+
+    submitInfo.signalSemaphoreInfoCount = 1;
+    submitInfo.pSignalSemaphoreInfos = &signalSemaphoreInfo;
+
+    VkCommandBufferSubmitInfo bufSubmitInfo{};
+    bufSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+    bufSubmitInfo.commandBuffer = buf;
+
+    submitInfo.commandBufferInfoCount = 1;
+    submitInfo.pCommandBufferInfos = &bufSubmitInfo;
+
+    vkQueueSubmit2(graphicsQueue, 1, &submitInfo, getCurrentFrame().renderFence);
+
+    VkPresentInfoKHR presentInfo{};
+    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    presentInfo.pSwapchains = &swapchain;
+    presentInfo.swapchainCount = 1;
+    presentInfo.pImageIndices = &swapchainImageIndex;
+
+    presentInfo.pWaitSemaphores = &getCurrentFrame().renderSemaphore;
+    presentInfo.waitSemaphoreCount = 1;
+
+    vkQueuePresentKHR(graphicsQueue, &presentInfo);
+
+    frameCount++;
+}
+
+void Renderer::recordMainCommands(RenderableState& r, VkCommandBuffer& buf) {
+    
 }
 
 void Renderer::handleEvent(const SDL_Event& e){
@@ -34,9 +99,19 @@ void Renderer::initRenderer() {
     pickPhysicalDevice();
     createDevice();
     createSwapchain();
+    createCommandPools();
+    createSyncObjects();
 }
 
 void Renderer::cleanup() {
+    vkDeviceWaitIdle(device);
+    for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; i++) {
+        vkDestroyCommandPool(device, frames[i].commandPool, nullptr);
+
+        vkDestroyFence(device, frames[i].renderFence, nullptr);
+        vkDestroySemaphore(device, frames[i].swapchainSemaphore, nullptr);
+        vkDestroySemaphore(device, frames[i].renderSemaphore, nullptr);
+    }
     for(int i = 0; i < swapchainImageViews.size(); i++) vkDestroyImageView(device, swapchainImageViews[i], nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
     vkDestroyDevice(device, nullptr);
@@ -227,6 +302,7 @@ void Renderer::pickPhysicalDevice() {
 
     requiredDeviceExtensions.insert(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
     requiredDeviceExtensions.insert(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+    requiredDeviceExtensions.insert(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
 
     struct CandidateData {
         int score;
@@ -457,7 +533,7 @@ void Renderer::createSwapchain() {
     createInfo.imageColorSpace = swapchainImageFormat.colorSpace;
     createInfo.imageExtent = swapchainExtent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     uint32_t queueFamilyIndices[] = {graphicsFamilyIndex, presentFamilyIndex};
 
@@ -512,6 +588,56 @@ void Renderer::createSwapchain() {
 void Renderer::destroySwapchain() {
     for(int i = 0; i < swapchainImageViews.size(); i++) vkDestroyImageView(device, swapchainImageViews[i], nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
+}
+
+void Renderer::createCommandPools() {
+    VkCommandPoolCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    createInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    createInfo.queueFamilyIndex = graphicsFamilyIndex;
+
+    for(int i=0; i<NUM_FRAMES_IN_FLIGHT; i++) {
+        if(vkCreateCommandPool(device, &createInfo, nullptr, &frames[i].commandPool) != VK_SUCCESS){
+            throw std::runtime_error("Failed to create command pool!");
+        }
+
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.commandPool = frames[i].commandPool;
+        allocInfo.commandBufferCount = 1;
+        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+        if(vkAllocateCommandBuffers(device, &allocInfo, &frames[i].mainCommandBuffer) != VK_SUCCESS){
+            throw std::runtime_error("Failed to allocate main command buffer!");
+        }
+    }
+}
+
+void Renderer::createSyncObjects() {
+    VkFenceCreateInfo fenceInfo{};
+    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+    VkSemaphoreCreateInfo semaphoreInfo{};
+    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+    
+    for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; i++) {
+        if(vkCreateFence(device, &fenceInfo, nullptr, &frames[i].renderFence) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create fence!");
+        }
+
+        if(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &frames[i].swapchainSemaphore) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create semaphore!");
+        }
+
+        if(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &frames[i].renderSemaphore) != VK_SUCCESS) {
+            throw std::runtime_error("Failed to create semaphore!");
+        }
+    }
+}
+
+Renderer::FrameData& Renderer::getCurrentFrame() {
+    return frames[frameCount % NUM_FRAMES_IN_FLIGHT];
 }
 
 } // namespace vkmv

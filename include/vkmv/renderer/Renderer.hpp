@@ -6,11 +6,6 @@
 #ifndef VKMV_RENDERER_HPP
 #define VKMV_RENDERER_HPP
 
-#include <algorithm>
-#include <iostream>
-#include <limits>
-#include <map>
-#include <queue>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -21,6 +16,8 @@
 #include "vkmv/app/Window.hpp"
 
 namespace vkmv {
+
+constexpr unsigned int NUM_FRAMES_IN_FLIGHT = 2;
 
 struct RenderableState {
 
@@ -37,7 +34,15 @@ public:
 private:
     const Window& window;
 
-    int frameNumber = 0;
+    int frameCount = 0;
+
+    struct FrameData {
+        VkCommandPool commandPool;
+        VkCommandBuffer mainCommandBuffer;
+        VkSemaphore swapchainSemaphore, renderSemaphore;
+        VkFence renderFence;
+    };
+    FrameData frames[NUM_FRAMES_IN_FLIGHT];
 
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
@@ -72,7 +77,11 @@ private:
     void createDevice();
     void createSwapchain();
     void destroySwapchain();
+    void createCommandPools();
+    void createSyncObjects();
 
+    FrameData& getCurrentFrame();
+    void recordMainCommands(RenderableState& r, VkCommandBuffer& buf);
 };
 
 } // namespace vkmv
