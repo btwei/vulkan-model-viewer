@@ -19,6 +19,10 @@ find_package(Vulkan REQUIRED)
 # Add subdirectories
 add_subdirectory(external/SDL EXCLUDE_FROM_ALL)
 
+# Add VulkanMemoryAllocator as a library
+add_library(VulkanMemoryAllocator INTERFACE)
+target_include_directories(VulkanMemoryAllocator INTERFACE ${CMAKE_SOURCE_DIR}/external/VulkanMemoryAllocator/include)
+
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE include)
 
@@ -27,4 +31,5 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
         ${Vulkan_LIBRARIES}
         SDL3::SDL3
+        VulkanMemoryAllocator
 )
