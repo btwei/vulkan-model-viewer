@@ -12,6 +12,8 @@
 #include <set>
 #include <stdexcept>
 
+#include <vk_mem_alloc.h>
+
 #include "vkmv/utils/VulkanHelpers.hpp"
 
 namespace vkmv {
@@ -38,7 +40,7 @@ void Renderer::drawFrame(RenderableState& r) {
     VkCommandBufferBeginInfo beginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO, nullptr, VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT, nullptr};
     vkBeginCommandBuffer(buf, &beginInfo);
 
-        recordMainCommands(r, buf);
+        recordMainCommands(r, buf, swapchainImages[swapchainImageIndex]);
 
     vkEndCommandBuffer(buf);
 
@@ -55,7 +57,7 @@ void Renderer::drawFrame(RenderableState& r) {
 
     VkSemaphoreSubmitInfo signalSemaphoreInfo{};
     signalSemaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-    signalSemaphoreInfo.semaphore = getCurrentFrame().renderSemaphore;
+    signalSemaphoreInfo.semaphore = swapchainImageResources[swapchainImageIndex].renderSemaphore;
     signalSemaphoreInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
 
     submitInfo.signalSemaphoreInfoCount = 1;
@@ -76,7 +78,7 @@ void Renderer::drawFrame(RenderableState& r) {
     presentInfo.swapchainCount = 1;
     presentInfo.pImageIndices = &swapchainImageIndex;
 
-    presentInfo.pWaitSemaphores = &getCurrentFrame().renderSemaphore;
+    presentInfo.pWaitSemaphores = &swapchainImageResources[swapchainImageIndex].renderSemaphore;
     presentInfo.waitSemaphoreCount = 1;
 
     vkQueuePresentKHR(graphicsQueue, &presentInfo);
@@ -84,8 +86,10 @@ void Renderer::drawFrame(RenderableState& r) {
     frameCount++;
 }
 
-void Renderer::recordMainCommands(RenderableState& r, VkCommandBuffer& buf) {
-    
+void Renderer::recordMainCommands(RenderableState& r, VkCommandBuffer& buf, VkImage& swapchainImage) {
+    transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 }
 
 void Renderer::handleEvent(const SDL_Event& e){
@@ -101,16 +105,18 @@ void Renderer::initRenderer() {
     createSwapchain();
     createCommandPools();
     createSyncObjects();
+    resourceManager.init(instance, physicalDevice, device);
 }
 
 void Renderer::cleanup() {
     vkDeviceWaitIdle(device);
+
+    for(int i = 0; i < swapchainImageResources.size(); i++) vkDestroySemaphore(device, swapchainImageResources[i].renderSemaphore, nullptr);
     for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; i++) {
         vkDestroyCommandPool(device, frames[i].commandPool, nullptr);
 
         vkDestroyFence(device, frames[i].renderFence, nullptr);
         vkDestroySemaphore(device, frames[i].swapchainSemaphore, nullptr);
-        vkDestroySemaphore(device, frames[i].renderSemaphore, nullptr);
     }
     for(int i = 0; i < swapchainImageViews.size(); i++) vkDestroyImageView(device, swapchainImageViews[i], nullptr);
     vkDestroySwapchainKHR(device, swapchain, nullptr);
@@ -462,9 +468,14 @@ void Renderer::createDevice() {
     createInfo.ppEnabledExtensionNames = extensions.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
 
+    VkPhysicalDeviceSynchronization2Features synchronization2{};
+    synchronization2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES;
+    synchronization2.synchronization2 = VK_TRUE;
+
     VkPhysicalDeviceDynamicRenderingFeatures dynamicRendering{};
     dynamicRendering.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
     dynamicRendering.dynamicRendering = VK_TRUE;
+    dynamicRendering.pNext = &synchronization2;
 
     createInfo.pNext = &dynamicRendering;
 
@@ -629,8 +640,11 @@ void Renderer::createSyncObjects() {
         if(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &frames[i].swapchainSemaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create semaphore!");
         }
+    }
 
-        if(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &frames[i].renderSemaphore) != VK_SUCCESS) {
+    swapchainImageResources.resize(swapchainImages.size());
+    for(int i=0; i < swapchainImages.size(); i++) {
+        if(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &swapchainImageResources[i].renderSemaphore) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create semaphore!");
         }
     }

@@ -6,6 +6,7 @@
 #ifndef VKMV_RENDERER_HPP
 #define VKMV_RENDERER_HPP
 
+#include <functional>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -14,6 +15,7 @@
 #include <SDL3/SDL_vulkan.h>
 
 #include "vkmv/app/Window.hpp"
+#include "vkmv/renderer/ResourceManager.hpp"
 
 namespace vkmv {
 
@@ -34,16 +36,22 @@ public:
 private:
     const Window& window;
 
-    int frameCount = 0;
-
     struct FrameData {
         VkCommandPool commandPool;
         VkCommandBuffer mainCommandBuffer;
-        VkSemaphore swapchainSemaphore, renderSemaphore;
+        VkSemaphore swapchainSemaphore;
         VkFence renderFence;
     };
     FrameData frames[NUM_FRAMES_IN_FLIGHT];
+    int frameCount = 0;
 
+    struct swapchainImageResource {
+        VkSemaphore renderSemaphore;
+    };
+    std::vector<swapchainImageResource> swapchainImageResources;
+
+    std::vector<char*> enabledInstanceLayers;
+    std::vector<std::string> enabledInstanceExtensions;
     VkInstance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
 
@@ -51,6 +59,7 @@ private:
 
     VkPhysicalDevice physicalDevice;
     VkDevice device;
+    std::vector<std::string> enabledDeviceExtensions;
     uint32_t graphicsFamilyIndex;
     uint32_t presentFamilyIndex;
     VkQueue graphicsQueue;
@@ -62,9 +71,7 @@ private:
     std::vector<VkImage> swapchainImages;
     std::vector<VkImageView> swapchainImageViews;
 
-    std::vector<char*> enabledInstanceLayers;
-    std::vector<std::string> enabledInstanceExtensions;
-    std::vector<std::string> enabledDeviceExtensions;
+    ResourceManager resourceManager;
 
     void initRenderer();
     void cleanup();
@@ -81,7 +88,7 @@ private:
     void createSyncObjects();
 
     FrameData& getCurrentFrame();
-    void recordMainCommands(RenderableState& r, VkCommandBuffer& buf);
+    void recordMainCommands(RenderableState& r, VkCommandBuffer& buf, VkImage& swapchainImage);
 };
 
 } // namespace vkmv

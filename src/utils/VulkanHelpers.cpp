@@ -28,6 +28,13 @@ void transitionImageLayout(VkCommandBuffer buf, VkImage image, VkImageLayout old
             barrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
             barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
         }
+    } else if(oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+        if(newLayout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
+            barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            barrier.dstStageMask = VK_PIPELINE_STAGE_2_NONE_KHR;
+            barrier.dstAccessMask = VK_ACCESS_2_NONE_KHR;
+        }
     }
 
     barrier.oldLayout = oldLayout;
