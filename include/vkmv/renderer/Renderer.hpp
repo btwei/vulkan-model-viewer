@@ -39,11 +39,15 @@ private:
     struct FrameData {
         VkCommandPool commandPool;
         VkCommandBuffer mainCommandBuffer;
+
         VkSemaphore swapchainSemaphore;
         VkFence renderFence;
+
+        AllocatedImage renderTargetImage;
     };
     FrameData frames[NUM_FRAMES_IN_FLIGHT];
     int frameCount = 0;
+    unsigned int width, height;
 
     struct swapchainImageResource {
         VkSemaphore renderSemaphore;
@@ -86,8 +90,11 @@ private:
     void destroySwapchain();
     void createCommandPools();
     void createSyncObjects();
+    void createRenderTargets();
+    void destroyRenderTargets();
 
     FrameData& getCurrentFrame();
+    void refreshWindowDims();
     void recordMainCommands(RenderableState& r, VkCommandBuffer& buf, VkImage& swapchainImage);
 };
 

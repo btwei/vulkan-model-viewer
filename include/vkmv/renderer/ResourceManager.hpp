@@ -13,11 +13,16 @@
 namespace vkmv {
 
 struct AllocatedImage {
-
+    VkImage image;
+    VkImageView imageView;
+    VmaAllocation allocation;
+    VkExtent3D imageExtent;
+    VkFormat imageFormat;
 };
 
 struct AllocatedBuffer {
-
+    VkBuffer buffer;
+    VmaAllocation allocation;
 };
 
 /**
@@ -37,6 +42,10 @@ public:
      * @brief Cleans up this class. No calls may be used again after calling cleanup.
      */
     void cleanup();
+
+    AllocatedImage allocateImage(VkFormat format, VkImageUsageFlags usageFlags, VkExtent3D extent, VkMemoryPropertyFlagBits memoryProperties);
+
+    void destroyAllocatedImage(AllocatedImage allocatedImage);
 
 private:
     VkInstance _instance;

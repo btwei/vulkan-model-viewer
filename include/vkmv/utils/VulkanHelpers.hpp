@@ -12,6 +12,8 @@ namespace vkmv {
 
 void transitionImageLayout(VkCommandBuffer buf, VkImage image, VkImageLayout oldLayout, VkImageLayout newLayout);
 
+void blitImageToImage(VkCommandBuffer buf, VkImage src, VkImage dst, VkExtent3D srcSize, VkExtent3D dstSize);
+
 } // namespace vkmv
 
 #endif // VKMV_VULKANHELPERS_HPP

@@ -56,4 +56,39 @@ void transitionImageLayout(VkCommandBuffer buf, VkImage image, VkImageLayout old
     vkCmdPipelineBarrier2(buf, &depInfo);
 }
 
+void blitImageToImage(VkCommandBuffer buf, VkImage src, VkImage dst, VkExtent3D srcSize, VkExtent3D dstSize) {
+    VkImageBlit2 blit{};
+    blit.sType = VK_STRUCTURE_TYPE_IMAGE_BLIT_2;
+
+    blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.srcSubresource.baseArrayLayer = 0;
+    blit.srcSubresource.layerCount = 1;
+    blit.srcSubresource.mipLevel = 0;
+
+    blit.srcOffsets[1].x = srcSize.width;
+    blit.srcOffsets[1].y = srcSize.height;
+    blit.srcOffsets[1].z = srcSize.depth;
+
+    blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    blit.dstSubresource.baseArrayLayer = 0;
+    blit.dstSubresource.layerCount = 1;
+    blit.dstSubresource.mipLevel = 0;
+
+    blit.dstOffsets[1].x = dstSize.width;
+    blit.dstOffsets[1].y = dstSize.height;
+    blit.dstOffsets[1].z = dstSize.depth;
+
+    VkBlitImageInfo2 blitInfo{};
+    blitInfo.sType = VK_STRUCTURE_TYPE_BLIT_IMAGE_INFO_2;
+    blitInfo.srcImage = src;
+    blitInfo.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    blitInfo.dstImage = dst;
+    blitInfo.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    blitInfo.regionCount = 1;
+    blitInfo.pRegions = &blit;
+    blitInfo.filter = VK_FILTER_LINEAR;
+
+    vkCmdBlitImage2(buf, &blitInfo);
+}
+
 } // namespace vkmv

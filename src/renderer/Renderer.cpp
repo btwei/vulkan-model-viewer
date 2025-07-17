@@ -87,7 +87,12 @@ void Renderer::drawFrame(RenderableState& r) {
 }
 
 void Renderer::recordMainCommands(RenderableState& r, VkCommandBuffer& buf, VkImage& swapchainImage) {
+    transitionImageLayout(buf, getCurrentFrame().renderTargetImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    transitionImageLayout(buf, getCurrentFrame().renderTargetImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    blitImageToImage(buf, getCurrentFrame().renderTargetImage.image, swapchainImage, VkExtent3D{width, height, 1}, VkExtent3D{width, height, 1});
 
     transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 }
@@ -102,15 +107,18 @@ void Renderer::initRenderer() {
     createSurface();
     pickPhysicalDevice();
     createDevice();
+    refreshWindowDims();
     createSwapchain();
     createCommandPools();
     createSyncObjects();
     resourceManager.init(instance, physicalDevice, device);
+    createRenderTargets();
 }
 
 void Renderer::cleanup() {
     vkDeviceWaitIdle(device);
-
+    destroyRenderTargets();
+    resourceManager.cleanup();
     for(int i = 0; i < swapchainImageResources.size(); i++) vkDestroySemaphore(device, swapchainImageResources[i].renderSemaphore, nullptr);
     for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; i++) {
         vkDestroyCommandPool(device, frames[i].commandPool, nullptr);
@@ -529,11 +537,8 @@ void Renderer::createSwapchain() {
     if(surfaceCaps.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
         swapchainExtent = surfaceCaps.currentExtent;
     } else {
-        int w, h;
-        SDL_GetWindowSizeInPixels(window.getWindow(), &w, &h);
-
-        swapchainExtent = {std::clamp(static_cast<uint32_t>(w), surfaceCaps.minImageExtent.width, surfaceCaps.maxImageExtent.width),
-                           std::clamp(static_cast<uint32_t>(h), surfaceCaps.minImageExtent.height, surfaceCaps.maxImageExtent.height)};
+        swapchainExtent = {std::clamp(static_cast<uint32_t>(width), surfaceCaps.minImageExtent.width, surfaceCaps.maxImageExtent.width),
+                           std::clamp(static_cast<uint32_t>(height), surfaceCaps.minImageExtent.height, surfaceCaps.maxImageExtent.height)};
     }
 
     VkSwapchainCreateInfoKHR createInfo{};
@@ -650,8 +655,37 @@ void Renderer::createSyncObjects() {
     }
 }
 
+/**
+ * @todo Move window size logic into the window class
+*/ 
+void Renderer::createRenderTargets() {
+    int w, h;
+    SDL_GetWindowSizeInPixels(window.getWindow(), &w, &h);
+
+    unsigned int width = static_cast<unsigned int>(w);
+    unsigned int height = static_cast<unsigned int>(h);
+
+    for(int i = 0; i < NUM_FRAMES_IN_FLIGHT; i++) {
+        frames[i].renderTargetImage = resourceManager.allocateImage(VK_FORMAT_R16G16B16A16_SFLOAT, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VkExtent3D{width, height, 1}, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    }
+}
+
+void Renderer::destroyRenderTargets() {
+    for(int i= 0; i < NUM_FRAMES_IN_FLIGHT; i++) {
+        resourceManager.destroyAllocatedImage(frames[i].renderTargetImage);
+    }
+}
+
 Renderer::FrameData& Renderer::getCurrentFrame() {
     return frames[frameCount % NUM_FRAMES_IN_FLIGHT];
+}
+
+void Renderer::refreshWindowDims() {
+    int w, h;
+    SDL_GetWindowSizeInPixels(window.getWindow(), &w, &h);
+
+    width = w;
+    height = h;
 }
 
 } // namespace vkmv
