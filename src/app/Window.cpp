@@ -22,6 +22,7 @@ Window::~Window() {
 
 void Window::handleEvent(SDL_Event event) {
     if(event.type == SDL_EVENT_QUIT) quit = true;
+    if(event.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && event.window.windowID == SDL_GetWindowID(window)) quit = true;
 }
 
 void Window::initWindow() {

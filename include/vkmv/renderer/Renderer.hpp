@@ -25,13 +25,23 @@ struct RenderableState {
 
 };
 
+/**
+ * @class Renderer
+ * @brief Encapsulates all Vulkan rendering logic.
+ * 
+ * Intended to be run on a window and receive updates from an engine class.
+ */
 class Renderer {
 public:
     Renderer(const Window& window);
     ~Renderer();
 
-    void drawFrame(RenderableState& r);
+    /**
+     * @brief Handles a SDL event. Stores whether the event should be captured by the UIOverlay or not.
+     */
     void handleEvent(const SDL_Event& e);
+
+    void drawFrame(RenderableState& r);
 
 private:
     const Window& window;
@@ -92,6 +102,9 @@ private:
     void createSyncObjects();
     void createRenderTargets();
     void destroyRenderTargets();
+
+    void initImGUI();
+    void cleanupImGUI();
 
     FrameData& getCurrentFrame();
     void refreshWindowDims();

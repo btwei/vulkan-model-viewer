@@ -12,6 +12,9 @@
 #include <set>
 #include <stdexcept>
 
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_vulkan.h>
 #include <vk_mem_alloc.h>
 
 #include "vkmv/utils/VulkanHelpers.hpp"
@@ -25,6 +28,47 @@ Renderer::Renderer(const Window& window)
 
 Renderer::~Renderer() {
     cleanup();
+}
+
+void Renderer::handleEvent(const SDL_Event& e){
+
+}
+
+void Renderer::recordMainCommands(RenderableState& r, VkCommandBuffer& buf, VkImage& swapchainImage) {
+    transitionImageLayout(buf, getCurrentFrame().renderTargetImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+    VkRenderingAttachmentInfo colorAttachmentInfo{};
+    colorAttachmentInfo.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
+    colorAttachmentInfo.imageView = getCurrentFrame().renderTargetImage.imageView;
+    colorAttachmentInfo.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachmentInfo.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachmentInfo.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachmentInfo.clearValue.color = VkClearColorValue{0, 0, 0, 0};
+
+    VkRenderingInfo renderingInfo{};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.offset = VkOffset2D{0 , 0};
+    renderingInfo.renderArea.extent = VkExtent2D{width, height};
+    renderingInfo.layerCount = 1;
+    renderingInfo.viewMask = 0;
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.pColorAttachments = &colorAttachmentInfo;
+    renderingInfo.pDepthAttachment = nullptr;
+    renderingInfo.pStencilAttachment = nullptr; 
+
+    vkCmdBeginRendering(buf, &renderingInfo);
+
+        ImGui::Render();
+        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), buf);
+
+    vkCmdEndRendering(buf);
+
+    transitionImageLayout(buf, getCurrentFrame().renderTargetImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    blitImageToImage(buf, getCurrentFrame().renderTargetImage.image, swapchainImage, VkExtent3D{width, height, 1}, VkExtent3D{width, height, 1});
+
+    transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 }
 
 void Renderer::drawFrame(RenderableState& r) {
@@ -86,21 +130,6 @@ void Renderer::drawFrame(RenderableState& r) {
     frameCount++;
 }
 
-void Renderer::recordMainCommands(RenderableState& r, VkCommandBuffer& buf, VkImage& swapchainImage) {
-    transitionImageLayout(buf, getCurrentFrame().renderTargetImage.image, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-    transitionImageLayout(buf, getCurrentFrame().renderTargetImage.image, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-    blitImageToImage(buf, getCurrentFrame().renderTargetImage.image, swapchainImage, VkExtent3D{width, height, 1}, VkExtent3D{width, height, 1});
-
-    transitionImageLayout(buf, swapchainImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-}
-
-void Renderer::handleEvent(const SDL_Event& e){
-
-}
-
 void Renderer::initRenderer() {
     createInstance();
     createDebugMessenger();
@@ -113,10 +142,12 @@ void Renderer::initRenderer() {
     createSyncObjects();
     resourceManager.init(instance, physicalDevice, device);
     createRenderTargets();
+    initImGUI();
 }
 
 void Renderer::cleanup() {
     vkDeviceWaitIdle(device);
+    cleanupImGUI();
     destroyRenderTargets();
     resourceManager.cleanup();
     for(int i = 0; i < swapchainImageResources.size(); i++) vkDestroySemaphore(device, swapchainImageResources[i].renderSemaphore, nullptr);
@@ -686,6 +717,61 @@ void Renderer::refreshWindowDims() {
 
     width = w;
     height = h;
+}
+
+void Renderer::initImGUI() {
+    VkFormat colorAttachmentFormats[] = { VK_FORMAT_R16G16B16A16_SFLOAT };
+
+    VkPipelineRenderingCreateInfoKHR renderingCreateInfo{};
+    renderingCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR;
+    renderingCreateInfo.pNext = nullptr;
+    renderingCreateInfo.viewMask = 0;
+    renderingCreateInfo.colorAttachmentCount = 1;
+    renderingCreateInfo.pColorAttachmentFormats = colorAttachmentFormats;
+    renderingCreateInfo.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
+    renderingCreateInfo.stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL3_InitForVulkan(window.getWindow());
+    ImGui_ImplVulkan_InitInfo init_info = {};
+    init_info.ApiVersion = VK_VERSION_1_3;
+    init_info.Instance = instance;
+    init_info.PhysicalDevice = physicalDevice;
+    init_info.Device = device;
+    init_info.QueueFamily = graphicsFamilyIndex;
+    init_info.Queue = graphicsQueue;
+    init_info.DescriptorPool = VK_NULL_HANDLE;
+    init_info.RenderPass = VK_NULL_HANDLE;
+
+    init_info.MinImageCount = swapchainImages.size();
+    init_info.ImageCount = swapchainImages.size();
+    init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+
+    init_info.PipelineCache = VK_NULL_HANDLE;
+    init_info.Subpass = 0;
+
+    init_info.DescriptorPoolSize = IMGUI_IMPL_VULKAN_MINIMUM_IMAGE_SAMPLER_POOL_SIZE;
+
+    init_info.UseDynamicRendering = true;
+    init_info.PipelineRenderingCreateInfo = renderingCreateInfo;
+
+    init_info.Allocator = nullptr;
+    init_info.CheckVkResultFn = nullptr;
+    init_info.MinAllocationSize = 1024*1024;
+
+    ImGui_ImplVulkan_Init(&init_info);
+}
+
+void Renderer::cleanupImGUI() {
+    ImGui_ImplVulkan_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
 }
 
 } // namespace vkmv

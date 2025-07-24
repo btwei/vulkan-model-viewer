@@ -23,14 +23,14 @@ void App::run() {
 
     Window w;
     Renderer renderer(w);
-    Engine engine;
+    Engine engine(renderer);
 
     while(!w.shouldClose()) {
         SDL_Event e;
         while(SDL_PollEvent(&e) != false) {
             w.handleEvent(e);
-            engine.handleEvent(e);
             renderer.handleEvent(e);
+            engine.handleEvent(e);
         }
 
         engine.update(state);
