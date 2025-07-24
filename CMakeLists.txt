@@ -16,6 +16,9 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # Find packages
 find_package(Vulkan REQUIRED)
 
+# Add SDL as a subdirectory
+add_subdirectory(external/SDL EXCLUDE_FROM_ALL)
+
 # Add Dear ImGUI as a library 
 set(IMGUI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/external/imgui)
 set(IMGUI_SOURCES
@@ -31,10 +34,9 @@ set(IMGUI_SOURCES
 add_library(imgui STATIC ${IMGUI_SOURCES})
 
 target_include_directories(imgui PUBLIC ${IMGUI_DIR} ${IMGUI_DIR}/backends)
-target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+target_link_libraries(imgui PRIVATE SDL3::SDL3)
 
-# Add SDL as a subdirectory
-add_subdirectory(external/SDL EXCLUDE_FROM_ALL)
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 
 # Add VulkanMemoryAllocator as a library
 add_library(VulkanMemoryAllocator INTERFACE)
