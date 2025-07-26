@@ -44,27 +44,8 @@ void Engine::buildUI() {
     ImVec2 viewportSize = ImGui::GetMainViewport()->WorkSize;
 
     ImGui::BeginMainMenuBar();
-        if (ImGui::BeginMenu("File")) {
-            ImGui::EndMenu();
-        }
-        if (ImGui::BeginMenu("Edit")) {
-            ImGui::EndMenu();
-        }
 
     ImGui::EndMainMenuBar();
-
-/*
-    ImGui::SetNextWindowPos();
-    ImGui::SetNextWindowSize(ImVec2(panelWidth, viewportSize.y));
-
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                             ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoBringToFrontOnFocus |
-                             ImGuiWindowFlags_NoTitleBar;
-
-    ImGui::Begin("Right Panel", nullptr, flags);
-*/
-
-    ImGui::End();
 
 }
 
