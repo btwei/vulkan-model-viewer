@@ -15,6 +15,7 @@
 #include <SDL3/SDL_vulkan.h>
 
 #include "vkmv/app/Window.hpp"
+#include "vkmv/core/Instance.hpp"
 #include "vkmv/renderer/ResourceManager.hpp"
 
 namespace vkmv {
@@ -64,9 +65,7 @@ private:
     };
     std::vector<swapchainImageResource> swapchainImageResources;
 
-    std::vector<char*> enabledInstanceLayers;
-    std::vector<std::string> enabledInstanceExtensions;
-    VkInstance instance;
+    Instance instance;
     VkDebugUtilsMessengerEXT debugMessenger;
 
     VkSurfaceKHR surface;
@@ -90,9 +89,6 @@ private:
     void initRenderer();
     void cleanup();
 
-    void createInstance();
-    void createDebugMessenger();
-    void destroyDebugMessenger();
     void createSurface();
     void pickPhysicalDevice();
     void createDevice();
