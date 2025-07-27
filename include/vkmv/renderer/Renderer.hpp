@@ -15,6 +15,7 @@
 #include <SDL3/SDL_vulkan.h>
 
 #include "vkmv/app/Window.hpp"
+#include "vkmv/core/Device.hpp"
 #include "vkmv/core/Instance.hpp"
 #include "vkmv/renderer/ResourceManager.hpp"
 
@@ -66,17 +67,8 @@ private:
     std::vector<swapchainImageResource> swapchainImageResources;
 
     Instance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
-
     VkSurfaceKHR surface;
-
-    VkPhysicalDevice physicalDevice;
-    VkDevice device;
-    std::vector<std::string> enabledDeviceExtensions;
-    uint32_t graphicsFamilyIndex;
-    uint32_t presentFamilyIndex;
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
+    Device device;
 
     VkSwapchainKHR swapchain;
     VkSurfaceFormatKHR swapchainImageFormat;
