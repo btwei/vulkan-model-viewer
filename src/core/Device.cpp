@@ -10,8 +10,9 @@
 
 namespace vkmv {
 
-void Device::create(Instance* pInstance, DeviceParams params, Device* pDevice) {
+void Device::create(Instance* pInstance, DeviceParams* params, Device* pDevice) {
     pickPhysicalDevice(pInstance, params, pDevice);
+    createDevice(pInstance, params, pDevice);
 }
 
 void Device::destroy(Device* pDevice) {
@@ -32,7 +33,7 @@ void Device::destroy(Device* pDevice) {
  * 
  * @note Perhaps I should refactor this into many smaller functions
  */
-void Device::pickPhysicalDevice(Instance* pInstance, DeviceParams params, Device* pDevice) {
+void Device::pickPhysicalDevice(Instance* pInstance, DeviceParams* params, Device* pDevice) {
     uint32_t deviceCount;
     vkEnumeratePhysicalDevices(pInstance->getInstance(), &deviceCount, nullptr);
     std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
@@ -107,7 +108,7 @@ void Device::pickPhysicalDevice(Instance* pInstance, DeviceParams params, Device
             if(queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) graphicsFamilyFound = true;
 
             VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, params.presentableSurface, &presentSupport);
+            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, params->presentableSurface, &presentSupport);
 
             if(presentSupport) presentFamilyFound = true;
 
@@ -121,7 +122,7 @@ void Device::pickPhysicalDevice(Instance* pInstance, DeviceParams params, Device
 
         // GPU must have at least one available format
         uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, params.presentableSurface, &formatCount, nullptr);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(device, params->presentableSurface, &formatCount, nullptr);
 
         if(formatCount == 0) {
             deviceTraits.qualified = false;
@@ -147,7 +148,7 @@ void Device::pickPhysicalDevice(Instance* pInstance, DeviceParams params, Device
     }
 }
 
-void Device::createDevice(Instance* pInstance, DeviceParams params, Device* pDevice) {
+void Device::createDevice(Instance* pInstance, DeviceParams* params, Device* pDevice) {
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(pDevice->m_vkPhysicalDevice, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
@@ -166,7 +167,7 @@ void Device::createDevice(Instance* pInstance, DeviceParams params, Device* pDev
         }
 
         VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(pDevice->m_vkPhysicalDevice, i, params.presentableSurface, &presentSupport);
+        vkGetPhysicalDeviceSurfaceSupportKHR(pDevice->m_vkPhysicalDevice, i, params->presentableSurface, &presentSupport);
 
         if(!presentFamilyFound && presentSupport) {
             pDevice->m_presentFamilyIndex = i;
